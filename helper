@@ -1,0 +1,95 @@
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+
+const String dateFormatter = 'MMMM dd, y';
+
+extension DateHelper on DateTime {
+  String formatDate() {
+    final formatter = DateFormat(dateFormatter);
+    return formatter.format(this);
+  }
+
+  bool isSameDate(DateTime other) {
+    return year == other.year && month == other.month && day == other.day;
+  }
+
+  int getDifferenceInDaysWithNow() {
+    final now = DateTime.now();
+    return now.difference(this).inDays;
+  }
+}
+
+class NumberInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    const pattern = 'XXX/X/XXXX/XXXXXXXXXX/XXXX/XXX';
+    final patternList = pattern.split('/');
+
+    String input = newValue.text.replaceAll(RegExp(r'[^\d\w]'), '');
+
+    String formatted = '';
+    int index = 0;
+    for (String p in patternList) {
+      if (index + p.length > input.length) break;
+      formatted += '${input.substring(index, index + p.length)}/';
+      index += p.length;
+    }
+
+    if (index < input.length) {
+      formatted += input.substring(index);
+    }
+
+    if (formatted.endsWith('/')) {
+      formatted = formatted.substring(0, formatted.length - 1);
+    }
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+class NumericInputFormatter2 extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    const pattern = 'XXXXXX';
+    final patternList = pattern.split('');
+
+    String input = newValue.text.replaceAll(RegExp(r'\D'), '');
+
+    String formatted = '';
+    int index = 0;
+    for (String p in patternList) {
+      if (index + p.length > input.length) break;
+      formatted += input.substring(index, index + p.length);
+      index += p.length;
+    }
+
+    if (index < input.length) {
+      formatted += input.substring(index);
+    }
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+bool isPasswordValid(String password) {
+
+  final containsUpperCase = RegExp(r'[A-Z]').hasMatch(password);
+  final containsLowerCase = RegExp(r'[a-z]').hasMatch(password);
+  final containsNumber = RegExp(r'\d').hasMatch(password);
+  final containsSymbols = RegExp(r'[`~!@#$%\^&*\(\)_+\\\-={}\[\]\/.,<>;]').hasMatch(password);
+
+  return containsUpperCase &&
+      containsLowerCase &&
+      containsNumber &&
+      containsSymbols;
+}
+
+
