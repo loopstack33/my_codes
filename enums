@@ -1,0 +1,60 @@
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:intl/intl.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:myuicapp/utils/dependencies.dart';
+
+class Enums {
+
+  static final formatter = NumberFormat('#,###');
+ 
+  static  String formatAmountUnitsInternational(double amount) {
+  if (amount >= 1000000000) {
+  // For Billion
+  double billionValue = amount / 1000000000;
+ // return '${billionValue.toStringAsFixed(0)}B';
+  return billionValue == billionValue.toInt()
+      ? '${billionValue.toStringAsFixed(0)}B'
+      : '${billionValue.toStringAsFixed(2)}B';
+  } else if (amount >= 1000000) {
+  // For Million
+  double millionValue = amount / 1000000;
+  //return '${millionValue.toStringAsFixed(0)}M';
+  return millionValue == millionValue.toInt()
+      ? '${millionValue.toStringAsFixed(0)}M'
+      : '${millionValue.toStringAsFixed(2)}M';
+  } else if (amount >= 1000) {
+  // For Thousand
+  double thousandValue = amount / 1000;
+ // return '${thousandValue.toStringAsFixed(0)}K';
+
+  return thousandValue == thousandValue.toInt()
+      ? '${thousandValue.toStringAsFixed(0)}K'
+      : '${thousandValue.toStringAsFixed(2)}K';
+  } else {
+  // For smaller amounts
+  return amount.toStringAsFixed(2);
+  }
+  }
+  
+  static final RegExp inputFormatter = RegExp(r'^[0-9]{7}-[0-9]$');
+
+  static void openPlayStore(context) async {
+    var url = "your_link";
+    if (await canLaunchUrlString(url)) {
+      await launchUrlString(url,mode: LaunchMode.externalApplication);
+    } else {
+      ToastUtils.failureToast("PLAY-STORE IS NOT INSTALLED", context);
+    }
+  }
+
+  static void openAppStore(context) async {
+    var url = "your_link";
+
+    if (await canLaunchUrlString(url)) {
+      await launchUrlString(url,mode: LaunchMode.externalApplication);
+    } else {
+      ToastUtils.failureToast("APP STORE IS NOT INSTALLED", context);
+    }
+  }
+
+}
