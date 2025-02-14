@@ -1,0 +1,214 @@
+// ignore_for_file: file_names, deprecated_member_use
+
+import 'dart:async';
+import 'dart:ui' as ui;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+class MarkerUtils {
+  static Future<BitmapDescriptor> getMarkerIcon(
+      String imagePath, Color color) async {
+    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(pictureRecorder);
+
+    //size
+    Size canvasSize = Size(450.w, 150.h);
+    Size markerSize = Size(150.w, 150.h);
+
+    final Paint markerPaint = Paint()..color = color.withOpacity(.5);
+    final double shadowWidth = 30.w;
+
+    final Paint borderPaint = Paint()
+      ..color = color
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+
+    canvas.translate(canvasSize.width / 2, canvasSize.height / 2);
+
+    // Add shadow circle
+    canvas.drawOval(
+        Rect.fromLTWH(-markerSize.width / 2, -markerSize.height / 2,
+            markerSize.width, markerSize.height),
+        markerPaint);
+    // Add border circle
+    canvas.drawOval(
+        Rect.fromLTWH(
+            -markerSize.width / 2 + shadowWidth,
+            -markerSize.height / 2 + shadowWidth,
+            markerSize.width - 2 * shadowWidth,
+            markerSize.height - 2 * shadowWidth),
+        borderPaint);
+
+    // Oval for the image
+    Rect oval = Rect.fromLTWH(
+        -markerSize.width / 2 + .5 * shadowWidth,
+        -markerSize.height / 2 + .5 * shadowWidth,
+        markerSize.width - shadowWidth,
+        markerSize.height - shadowWidth);
+
+    //save canvas before rotate
+    canvas.save();
+
+    // Add path for oval image
+    canvas.clipPath(Path()..addOval(oval));
+
+    // Add image
+    ui.Image image = await getImageFromPath(imagePath);
+    paintImage(canvas: canvas, image: image, rect: oval, fit: BoxFit.fitHeight);
+
+    canvas.restore();
+
+// Convert canvas to image
+    final ui.Image markerAsImage = await pictureRecorder
+        .endRecording()
+        .toImage(canvasSize.width.toInt(), canvasSize.height.toInt());
+
+    final ByteData? byteData =
+        await markerAsImage.toByteData(format: ui.ImageByteFormat.png);
+    final Uint8List unit8List = byteData!.buffer.asUint8List();
+
+    return BitmapDescriptor.fromBytes(unit8List);
+  }
+
+  static Future<ui.Image> getImageFromPath(String imagePath) async {
+    var bd = await rootBundle.load(imagePath);
+    Uint8List imageBytes = Uint8List.view(bd.buffer);
+
+    final Completer<ui.Image> completer = Completer();
+
+    ui.decodeImageFromList(imageBytes, (ui.Image img) {
+      return completer.complete(img);
+    });
+
+    return completer.future;
+  }
+
+  static Future<BitmapDescriptor> getMarkerIcon2(String imagePath, Color color,
+      String registrationNo, String driverName) async {
+    const double width = 180;
+    const double containerHeight = 70;
+    const double borderThickness = 2.0; // Thickness of the red border
+    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(pictureRecorder);
+
+    // Size canvasSize = Size(750.w, 750.h);
+    Size canvasSize = Size(420.w, 420.h);
+    Size markerSize = Size(170.w, 170.h);
+
+    final double shadowWidth = 30.w;
+
+    canvas.translate(canvasSize.width / 2, canvasSize.height / 2);
+
+    final paint = Paint()..color = Colors.white;
+    final Rect containerRect = Rect.fromLTWH(
+      -width / 2, // Center the container horizontally
+      -markerSize.height / 2 - containerHeight, // Position above the marker
+      width,
+      containerHeight,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(containerRect, const Radius.circular(12)),
+      // Rounded corners
+      paint,
+    );
+
+    // Draw the red border around the container
+    final Paint borderContainerPaint = Paint()
+      ..color = color
+      ..strokeWidth = borderThickness
+      ..style = PaintingStyle.stroke;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(containerRect, const Radius.circular(12)),
+      borderContainerPaint,
+    );
+    // Apply rotation to the container
+
+    // Draw the driver name text
+    final TextPainter driverNamePainter = TextPainter(
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+      ellipsis: '...',
+    );
+    driverNamePainter.text = TextSpan(
+      text: registrationNo,
+      style: const TextStyle(
+          color: Colors.black,
+          fontSize: 26,
+          fontFamily: "Poppins",
+          fontWeight: FontWeight.bold,
+          overflow: TextOverflow.ellipsis,
+          height: 1),
+    );
+    driverNamePainter.layout(
+        maxWidth: width - 20); // Ensure text fits within the container
+    driverNamePainter.paint(
+      canvas,
+      Offset(
+        -driverNamePainter.width / 2, // Center the text horizontally
+        -markerSize.height / 2 -
+            containerHeight +
+            21, // Position at the top of the container
+      ),
+    );
+
+    // Draw a triangle clipper below the container
+    // final Paint trianglePaint = Paint()..color = color.withOpacity(0.5); // Same color as container
+    // final Path trianglePath = Path()
+    //     ..moveTo(-width / 2, containerRect.bottom) // Left point of the triangle
+    //     ..lineTo(0, containerRect.bottom + 10) // Bottom center point of the triangle
+    //     ..lineTo(width / 2, containerRect.bottom) // Right point of the triangle
+    //     ..close();
+    //
+    // canvas.drawPath(trianglePath, trianglePaint);
+
+    // // Draw the registration number text below the driver name with some spacing
+    // final TextPainter registrationPainter = TextPainter(
+    //     textDirection: TextDirection.ltr,
+    //     textAlign: TextAlign.center,
+    // );
+    // registrationPainter.text = TextSpan(
+    //     text: registrationNo,
+    //     style: const TextStyle(color: Colors.black, fontSize: 18),
+    // );
+    // registrationPainter.layout(maxWidth: width - 20); // Ensure text fits within the container
+    // registrationPainter.paint(
+    //     canvas,
+    //     Offset(
+    //         -registrationPainter.width / 2, // Center the text horizontally
+    //         -markerSize.height / 2 - containerHeight / 2
+    //     ),
+    // );
+
+    // Oval for the image
+    Rect oval = Rect.fromLTWH(
+        -markerSize.width / 2 + .5 * shadowWidth,
+        -markerSize.height / 2 + .5 * shadowWidth,
+        markerSize.width - shadowWidth,
+        markerSize.height - shadowWidth);
+
+    //save canvas before rotate
+    canvas.save();
+
+    // Add path for oval image
+    canvas.clipPath(Path()..addOval(oval));
+
+    // Add image
+    ui.Image image = await MarkerUtils.getImageFromPath(imagePath);
+    paintImage(canvas: canvas, image: image, rect: oval, fit: BoxFit.fitHeight);
+
+    canvas.restore();
+
+    // Convert canvas to image
+    final ui.Image markerAsImage = await pictureRecorder
+        .endRecording()
+        .toImage(canvasSize.width.toInt(), canvasSize.height.toInt());
+
+    final ByteData? byteData =
+        await markerAsImage.toByteData(format: ui.ImageByteFormat.png);
+    final Uint8List unit8List = byteData!.buffer.asUint8List();
+
+    return BitmapDescriptor.fromBytes(unit8List);
+  }
+}
