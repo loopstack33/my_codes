@@ -57,4 +57,33 @@ class Enums {
     }
   }
 
+
+int calculateAge(DateTime birthDate) {
+  DateTime currentDate = DateTime.now();
+  int age = currentDate.year - birthDate.year;
+  int month1 = currentDate.month;
+  int month2 = birthDate.month;
+  if (month2 > month1) {
+    age--;
+  } else if (month1 == month2) {
+    int day1 = currentDate.day;
+    int day2 = birthDate.day;
+    if (day2 > day1) {
+      age--;
+    }
+  }
+  return age;
+}
+
+int calculateAge2(DateTime birthDate) {
+  DateTime now = DateTime.now();
+  int age = now.year - birthDate.year;
+
+  if (now.month < birthDate.month ||
+      (now.month == birthDate.month && now.day < birthDate.day)) {
+    age--;
+  }
+  return age;
+}
+
 }
