@@ -87,7 +87,7 @@ class NotificationService {
     AndroidNotificationDetails(
         channel.id.toString(),
         channel.name.toString(),
-        channelDescription: "myUIC Notification Service",
+        channelDescription: "My Notification Service",
         importance: Importance.high,
         icon: '@drawable/logo',
         priority: Priority.high,
@@ -157,9 +157,9 @@ class NotificationService {
       body,
       const NotificationDetails(
         android: AndroidNotificationDetails(
-            'myUIC',
-            'myUIC',
-            channelDescription: "myUIC Notification Service",
+            'channel_id',
+            'channel_id',
+            channelDescription: "My Notification Service",
             importance: Importance.high,
             icon: '@drawable/logo',
             priority: Priority.high,
