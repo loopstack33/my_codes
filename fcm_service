@@ -1,0 +1,61 @@
+// ignore_for_file: avoid_print, depend_on_referenced_packages
+import 'dart:convert';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:http/http.dart' as http;
+import 'package:googleapis_auth/auth_io.dart' as auth;
+
+class FCMServices {
+  static fcmGetTokenAndSubscribe(topic) {
+    FirebaseMessaging.instance.getToken().then((value) {
+      FirebaseMessaging.instance.subscribeToTopic("$topic");
+    });
+  }
+
+  static Future<http.Response> sendFCM(topic, id, title, description) async {
+    final String serverKey = await getAccessToken();
+    String endPoint = "https://fcm.googleapis.com/v1/projects/myuic-4ede6/messages:send";
+
+    return http.post(
+      Uri.parse(endPoint),
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Authorization': "Bearer $serverKey",
+      },
+      body: jsonEncode({
+        "message": {
+          "token": topic,
+          "notification": {
+            "title": title,
+            "body": description,
+          },
+          "data": {
+            "android_channel_id": "channel_id",
+            "id": "$id",
+            "userName": "$title",
+          }
+        }
+      }),
+    );
+  }
+
+  static Future<String> getAccessToken() async {
+    final serviceAccountJson = {//YOUR JSON FILE CONTENT HERE//};
+
+    List<String> scopes = [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/firebase.database",
+      "https://www.googleapis.com/auth/firebase.messaging",
+    ];
+
+    http.Client client = await auth.clientViaServiceAccount(
+        auth.ServiceAccountCredentials.fromJson(serviceAccountJson), scopes);
+
+    auth.AccessCredentials credentials = await auth.obtainAccessCredentialsViaServiceAccount(
+        auth.ServiceAccountCredentials.fromJson(serviceAccountJson), scopes, client);
+
+    client.close();
+
+    return credentials.accessToken.data;
+  }
+
+}
