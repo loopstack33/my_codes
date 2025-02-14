@@ -1,0 +1,58 @@
+  Future<http.Response?> getAPIData({required String url, required bool isPost, var body}) async {
+    log("------ API URL ------ $url");
+    bool shouldRetry = true;
+    while (shouldRetry) {
+      try {
+        final response = isPost && body != null
+            ? await http.post(Uri.parse(url), body: json.encode(body), headers: headers)
+            : isPost && body == null
+            ? await http.post(Uri.parse(url), headers: headers)
+            : await http.get(Uri.parse(url), headers: headers);
+
+        if (response.statusCode == 200) {
+
+          return response;
+        } else {
+          switch (response.statusCode) {
+            case 403:
+              throw ForbiddenException();
+            case 404:
+              throw NotFoundException();
+            case 409:
+              throw ConflictException();
+            case 500:
+              throw InternalServerErrorException();
+            case 503:
+              throw ServiceUnavailableException();
+            default:
+              throw MyException();
+          }
+        }
+      } on SocketException {
+        Utils.failureToast("No internet connection. Please connect to a network and try again.");
+      } on http.ClientException {
+        Utils.failureToast("Oops! There seems to be an issue with the request. Please check and try again.");
+      } on HttpException {
+        Utils.failureToast("Something went wrong with the server. Please try again later.");
+      } on FormatException {
+        Utils.failureToast("Unable to process the input due to an invalid format. Please ensure everything is entered correctly.");
+      } on TimeoutException {
+        Utils.failureToast("The request timed out. Please try again later.");
+      } on ForbiddenException {
+        Utils.failureToast("Access to this feature is restricted. Please check your permissions or contact support for help.");
+      } on NotFoundException {
+        Utils.failureToast("The resource you're looking for could not be found. Please check the URL or try again later.");
+      } on ConflictException {
+        Utils.failureToast("There was a conflict with your request. Please try again or contact support.");
+      } on InternalServerErrorException {
+        Utils.failureToast("The server encountered an error. Please try again later.");
+      } on ServiceUnavailableException {
+        Utils.failureToast("The service is currently unavailable. Please try again in a few minutes.");
+      } on MyException {
+        Utils.failureToast("Something went wrong. Please check your internet and try again.");
+      } on ApiException {
+        Utils.failureToast("API Exception");
+      }
+      return null;
+    }
+  }
