@@ -1,0 +1,74 @@
+import 'package:flutter/services.dart';
+
+class NumberTextInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final int newTextLength = newValue.text.length;
+    int selectionIndex = newValue.selection.end;
+    int usedSubstringIndex = 0;
+    final StringBuffer newText = StringBuffer();
+    if (newTextLength >= 6) {
+      newText.write('${newValue.text.substring(0, usedSubstringIndex = 5)}-');
+      if (newValue.selection.end >= 5) selectionIndex += 1;
+    }
+    if (newTextLength >= 13) {
+      newText.write('${newValue.text.substring(5, usedSubstringIndex = 12)}-');
+      if (newValue.selection.end >= 12) selectionIndex += 1;
+    }
+    // Dump the rest.
+    if (newTextLength >= usedSubstringIndex) {
+      newText.write(newValue.text.substring(usedSubstringIndex));
+    }
+    return TextEditingValue(
+      text: newText.toString(),
+      selection: TextSelection.collapsed(offset: selectionIndex),
+    );
+  }
+}
+
+class CustomInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    var cleanedValue = _getCleanedValue(newValue.text);
+    final formattedValue = _getFormattedValue(cleanedValue);
+    final updatedCursorPosition =
+        _getUpdatedCursorPosition(formattedValue, newValue.selection);
+    return TextEditingValue(
+      text: formattedValue,
+      selection: updatedCursorPosition,
+      composing: TextRange.empty,
+    );
+  }
+
+  String _getCleanedValue(String value) {
+    return value.replaceAll(RegExp(r'\D'), '');
+  }
+
+  String _getFormattedValue(String cleanedValue) {
+    if (cleanedValue.length > 8) {
+      cleanedValue = cleanedValue.substring(0, 8);
+    }
+
+    final formattedValue = StringBuffer();
+
+    for (var i = 0; i < cleanedValue.length; i++) {
+      formattedValue.write(cleanedValue[i]);
+      if (i == 6) {
+        formattedValue.write('-');
+      }
+    }
+    return formattedValue.toString();
+  }
+
+  TextSelection _getUpdatedCursorPosition(
+      String formattedValue, TextSelection selection) {
+    final cursorOffset = selection.baseOffset;
+    if (cursorOffset >= formattedValue.length) {
+      return TextSelection.fromPosition(
+          TextPosition(offset: formattedValue.length));
+    }
+    return TextSelection.fromPosition(TextPosition(offset: cursorOffset));
+  }
+}
