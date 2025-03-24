@@ -1,0 +1,143 @@
+Future<void> deleteTask(int taskId) async {
+  await Supabase.instance.client.from('tasks').delete().match({'id': taskId});
+}
+
+Future<void> updateTask(int taskId, bool isCompleted) async {
+  await Supabase.instance.client.from('tasks').update({'is_completed': isCompleted}).match({'id': taskId});
+}
+
+Future<void> addTask(String title) async {
+  await Supabase.instance.client.from('tasks').insert({
+    'title': title,
+    'is_completed': false,
+  });
+}
+
+Future<List<Map<String, dynamic>>> fetchTasks() async {
+  final response = await Supabase.instance.client
+      .from('tasks')
+      .select()
+      .order('id', ascending: true);
+  return response;
+}
+
+Future<void> signOutUser() async {
+  await Supabase.instance.client.auth.signOut();
+  print("User signed out");
+}
+
+GET CURRENT USER 
+final user = Supabase.instance.client.auth.currentUser;
+if (user != null) {
+  print("User ID: ${user.id}");
+} else {
+  print("No user signed in");
+}
+
+void listenToTasks() {
+  Supabase.instance.client
+      .from('tasks')
+      .stream(primaryKey: ['id'])
+      .listen((tasks) {
+    print("Tasks updated: $tasks");
+  });
+}
+
+Future<void> uploadFile(File file) async {
+  final bytes = await file.readAsBytes();
+  final fileName = 'uploads/${DateTime.now().millisecondsSinceEpoch}.png';
+
+  await Supabase.instance.client.storage.from('avatars').uploadBinary(fileName, bytes);
+  print("File uploaded: $fileName");
+}
+
+////CREATE USER
+Future<void> signUpUser(String email, String password, String name) async {
+  final supabase = Supabase.instance.client;
+
+  final response = await supabase.auth.signUp(
+    email: email,
+    password: password,
+  );
+
+  final user = response.user;
+
+  if (user != null) {
+    // Store user data in the database
+    await supabase.from('users').insert({
+      'id': user.id,  // Storing the user's unique ID
+      'email': email,
+      'name': name,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+
+    print("User signed up and stored in database!");
+  } else {
+    print("Error: ${response.error?.message}");
+  }
+}
+
+Future<Map<String, dynamic>?> getUserData() async {
+  final supabase = Supabase.instance.client;
+  final user = supabase.auth.currentUser;
+
+  if (user == null) {
+    print("No user signed in");
+    return null;
+  }
+
+  final response = await supabase.from('users').select().eq('id', user.id).single();
+  return response;
+}
+
+Future<void> updateUserProfile(String name) async {
+  final supabase = Supabase.instance.client;
+  final user = supabase.auth.currentUser;
+
+  if (user == null) {
+    print("No user signed in");
+    return;
+  }
+
+  await supabase.from('users').update({'name': name}).eq('id', user.id);
+  print("User profile updated!");
+}
+
+//GOOGLE LOGIN (google_sign_in)
+Future<void> signInWithGoogle() async {
+  final googleSignIn = GoogleSignIn();
+  final googleUser = await googleSignIn.signIn();
+
+  if (googleUser == null) {
+    print("Google sign-in cancelled.");
+    return;
+  }
+
+  final googleAuth = await googleUser.authentication;
+  final idToken = googleAuth.idToken;
+
+  if (idToken == null) {
+    print("Failed to retrieve Google ID Token.");
+    return;
+  }
+
+  final response = await Supabase.instance.client.auth.signInWithIdToken(
+    provider: OAuthProvider.google,
+    idToken: idToken,
+  );
+
+  final user = response.user;
+  if (user != null) {
+    // Store user data in database
+    await Supabase.instance.client.from('users').upsert({
+      'id': user.id,
+      'email': user.email,
+      'name': user.userMetadata?['full_name'] ?? googleUser.displayName,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+
+    print("Google sign-in successful!");
+  } else {
+    print("Google sign-in failed: ${response.error?.message}");
+  }
+}
