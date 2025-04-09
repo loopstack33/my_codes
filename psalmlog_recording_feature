@@ -1,0 +1,523 @@
+import '../dependencies/app_dependencies.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
+
+class Recording extends StatefulWidget {
+  const Recording({Key? key}) : super(key: key);
+
+  @override
+  State<Recording> createState() => _RecordingState();
+}
+
+class _RecordingState extends State<Recording> {
+
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  final FlutterSoundPlayer _player = FlutterSoundPlayer();
+  bool _isRecorderReady = false;
+  bool isRecording = false;
+  bool _isPaused = false;
+  bool _isPlaying = false;
+  Uint8List _recordedData = Uint8List(0);
+  Timer? _recordingTimer;
+  final int _maxDurationSeconds = 900; // 15 minutes
+  int _recordDuration = 0; // in seconds
+  Timer? _uiTimer;
+  late StreamController<Uint8List> _audioStreamController;
+  late StreamSubscription<Uint8List> _audioSubscription;
+
+  late Future<List<dynamic>> translations;
+  late Future<List<dynamic>> books;
+   String? selectedTranslation;
+   String? selectedBook;
+
+  @override
+  void initState() {
+    super.initState();
+    init();
+    _initializeFilePath();
+    // Fetch available translations from the API
+    translations = fetchTranslations();
+  }
+
+  String _filePath = ''; // Path to save the recording
+
+  // Initialize the file path for recording
+  Future<void> _initializeFilePath() async {
+    // Get the temporary directory path
+    final directory = await getTemporaryDirectory();
+    _filePath = '${directory.path}/temp_recording.aac';
+  }
+
+  Future<void> init() async {
+    await [Permission.microphone].request();
+    await _recorder.openRecorder();
+    await _player.openPlayer();
+    setState(() => _isRecorderReady = true);
+  }
+
+  Future<void> startRecording() async {
+
+    if (!_isRecorderReady) return;
+    setState(() {
+      isRecording = true;
+      _isPaused = false;
+      _recordedData = Uint8List(0);
+      _recordDuration=0;
+    });
+
+    _audioStreamController = StreamController<Uint8List>();
+    _audioSubscription = _audioStreamController.stream.listen((chunk) {
+      setState(() {
+        _recordedData = Uint8List.fromList(_recordedData + chunk); // Append audio data
+      });
+    });
+    // await _recorder.startRecorder(
+    //   toStream: _audioStreamController.sink,
+    //   codec: Codec.pcm16,
+    // );
+
+    await _recorder.startRecorder(
+      toFile: _filePath, // Use a temporary file path
+      codec: Codec.aacADTS, // AAC codec for compressed audio
+    );
+
+    // Stop recording after 15 minutes
+    _recordingTimer = Timer(Duration(seconds: _maxDurationSeconds), stopRecording);
+
+    // Start UI timer
+    _uiTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      if (!_isPaused) {
+        setState(() {
+          _recordDuration++;
+        });
+      }
+    });
+  }
+
+  Future<void> pauseRecording() async {
+    if (!isRecording || _isPaused) return;
+
+    await _recorder.pauseRecorder();
+    setState(() {
+      _isPaused = true;
+    });
+  }
+
+  Future<void> resumeRecording() async {
+    if (!isRecording || !_isPaused) return;
+
+    await _recorder.resumeRecorder();
+    setState(() {
+      _isPaused = false;
+    });
+  }
+
+  Future<void> pauseOrResumeRecording() async {
+    if (!isRecording) return;
+    if (_isPaused) {
+      await _recorder.resumeRecorder();
+      setState(() {
+        _isPaused = false;
+      });
+    } else {
+      await _recorder.pauseRecorder();
+      setState(() {
+        _isPaused = true;
+      });
+    }
+  }
+
+  Future<void> pauseOrResumePlayer() async {
+    if (_player.isPaused) {
+      await _player.resumePlayer();
+      setState(() => _isPlaying = true);
+    } else {
+      await _player.pausePlayer();
+      setState(() => _isPlaying = false);
+    }
+  }
+
+  Future<void> stopRecording() async {
+    _recordingTimer?.cancel();
+    _uiTimer?.cancel();
+    setState(() {
+      _recordDuration=0;
+      isRecording = false;
+      _isPaused = false;
+    });
+    await _recorder.stopRecorder();
+    await _audioStreamController.close();
+    await _audioSubscription.cancel();
+  }
+
+  Future<void> playRecording() async {
+    //if (_recordedData.isEmpty) return;
+    // await _player.startPlayer(
+    //   fromDataBuffer: _recordedData,
+    //   codec: Codec.pcm16,
+    //   whenFinished: () {
+    //     setState(() => _isPlaying = false);
+    //   },
+    // );
+    if (_filePath.isEmpty) return;
+    await _player.startPlayer(
+      fromURI: _filePath, // Path to the recorded audio file
+      codec: Codec.aacADTS, // Audio codec used for the recording
+      whenFinished: () {
+        setState(() => _isPlaying = false);
+        print('Audio finished playing');
+      },
+    );
+    setState(() {
+      _isPlaying = true;
+    });
+  }
+
+  Future<void> stopPlayback() async {
+    await _player.stopPlayer();
+  }
+
+  @override
+  void dispose() {
+    isRecording = false;
+    _uiTimer?.cancel();
+    _recordingTimer?.cancel();
+    _recorder.closeRecorder();
+    _player.closePlayer();
+    super.dispose();
+  }
+
+  // Fetch available translations from API
+  Future<List<dynamic>> fetchTranslations() async {
+    final url = 'https://bible.helloao.org/api/available_translations.json';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+
+      List<dynamic> availableTranslations = data['translations'];
+      /* // Map through the list of translations and extract necessary fields
+      List<dynamic> translationsList = data['translations'] ?? [];
+      for (var translation in translationsList) {
+        availableTranslations.add({
+          'id': translation['id'],         // Translation ID (for later use)
+          'name': translation['name'],     // Translation Name (for display in dropdown)
+          'language': translation['language'], // Language code (optional)
+          'shortName': translation['shortName'], // Short Name (optional)
+        });
+      }
+*/
+      return availableTranslations;
+    } else {
+      throw Exception('Failed to load translations');
+    }
+  }
+
+  // Fetch books for selected translation from API
+  Future<List<dynamic>> fetchBooks(String translation) async {
+    final url = 'https://bible.helloao.org/api/$translation/books.json';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      List<dynamic> availableBooks = List<dynamic>.from(data['books']);
+      return availableBooks;
+    } else {
+      throw Exception('Failed to load books');
+    }
+  }
+
+  // Fetch chapter content from the API
+  Future<List<dynamic>> fetchChapterContent(String translation, String book, int chapter) async {
+    final url = 'https://bible.helloao.org/api/$translation/$book/$chapter.json';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      // Assuming content is available as a 'content' field, adjust if needed
+      return data['content'] ?? 'No content available';
+    } else {
+      throw Exception('Failed to load chapter content');
+    }
+  }
+
+  String selectedChapter = "1";
+  String selectedVerse = "1";
+  String chapterContent = '';
+  int numberOfChapters = 0;
+  int numberOfVerses = 0;
+  List<String> chapters = [];
+  List<String> verses = [];
+  Map<String, dynamic> data = {};
+
+  // Method to fetch chapter content
+  Future<void> fetchChapterContent2(String translation, String book) async {
+    final url =
+        'https://bible.helloao.org/api/$translation/$book/$selectedChapter.json';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      setState(() {
+        data = json.decode(response.body);
+        // Get the number of chapters in the book
+        numberOfChapters = data['book']['numberOfChapters'];
+        // Populate chapters dropdown
+        chapters = List.generate(numberOfChapters, (index) => 'Chapter ${index + 1}');
+        // Set the default number of verses for the first chapter
+        numberOfVerses = data['numberOfVerses'];
+        verses = List.generate(numberOfVerses, (index) => 'Verse ${index + 1}');
+        chapterContent = _getVerseContent(data);
+      });
+    } else {
+      // Handle error
+      setState(() {
+        chapterContent = "Failed to fetch content.";
+      });
+    }
+  }
+
+  changeVerse(){
+    setState(() {
+      chapterContent = _getVerseContent(data);
+    });
+  }
+
+  // Extract content for a particular verse
+  String _getVerseContent(Map data) {
+
+    var chapter = data['chapter'];
+    print("CHAPTER $chapter");
+    var verse = (chapter['content'] as List).firstWhere(
+            (verse) => verse['type'] == 'verse' && verse['number'].toString() == selectedVerse.toString(),
+        orElse: () => {});
+    print("SELECTED VERSE $selectedVerse");
+    print("VERSE $verse");
+
+    // If verse is found
+    if (verse.isNotEmpty) {
+      String verseContent = verse['content']?.join('\n') ?? "";
+
+      // Clean up unwanted elements like {lineBreak: true} and any other structured data (e.g., {noteId: 4316})
+      verseContent = verseContent
+          .replaceAll("{lineBreak: true}", "")  // Remove lineBreak
+          .replaceAll(RegExp(r"\{.*?\}"), "").
+           replaceAll("â", "\"")
+          .replaceAll("â", "\"")
+          .replaceAll("â", "\"")
+          .replaceAll("â", "\"");
+
+      return verseContent.isNotEmpty ? verseContent : "No content found for this verse.";
+    }
+
+    return "No content found for this verse.";
+
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: white,
+      appBar: AppBar(title: Text('Record In Memory'),
+      iconTheme: IconThemeData(
+        color: white
+      )),
+      body: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _formatDuration(_recordDuration),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Text(_filePath),
+            SizedBox(height: 10),
+            Wrap(
+              spacing: 20,
+              runSpacing: 20,
+              children: [
+                GestureDetector(
+                  onTap: isRecording ? null : startRecording,
+                  child: Icon(Icons.play_arrow_rounded,size: 30,color: greyColor),
+                ),
+                GestureDetector(
+                  onTap: isRecording ? pauseRecording : null,
+                  child: Icon(Icons.pause,size: 30,color: greyColor),
+                ),
+                GestureDetector(
+                  onTap: _isPaused ? resumeRecording : null,
+                  child: Icon(Icons.restore,size: 30,color: greyColor),
+                ),
+                if (isRecording)
+                  GestureDetector(
+                  onTap: stopRecording,
+                  child: Icon(Icons.stop_rounded,size: 30,color: greyColor),
+                ),
+                GestureDetector(
+                  onTap: _filePath.isEmpty ? null : (_isPlaying ? pauseOrResumePlayer : playRecording),
+                  child: Icon(_isPlaying? Icons.pause_circle_outline:Icons.play_circle_fill,size: 30,color: greyColor),
+                ),
+                GestureDetector(
+                  onTap: stopPlayback,
+                  child: Icon(Icons.stop_circle,size: 30,color: greyColor),
+                ),
+              ],
+            ),
+            SizedBox(height: 10),
+            // Translation Dropdown
+            FutureBuilder<List<dynamic>>(
+              future: translations,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return CircularProgressIndicator();
+                } else if (snapshot.hasError) {
+                  return Text('Error: ${snapshot.error}');
+                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return Text('No translations available');
+                } else {
+                  return DropdownButtonHideUnderline(child: DropdownButton<String>(
+                    menuMaxHeight: 200,
+                    iconSize: 24, // Ensure the arrow size stays appropriate
+                    isExpanded: true, // Make the dropdown expand to prevent overflow
+                    elevation: 8, // Optional: adds shadow for better visibility
+                    icon: Icon(Icons.arrow_drop_down), // Custom dropdown arrow
+                    value: selectedTranslation,
+                    onChanged: (String? newTranslation) {
+                      setState(() {
+                        selectedTranslation = newTranslation!;
+                        selectedBook = null;
+                        books = fetchBooks(newTranslation);
+                      });
+                    },
+                    items: snapshot.data!
+                        .map((translation) => DropdownMenuItem<String>(
+                      value: translation['id'],  // Use the 'id' as the value
+                      child: Text(translation['name']!),  // Show 'name' as the label
+                    ))
+                        .toList(),
+                    hint: Text('Select Translation'),
+                  ));
+                }
+              },
+            ),
+            SizedBox(height: 10),
+
+            // Book Dropdown
+            if (selectedTranslation!=null)
+            FutureBuilder<List<dynamic>>(
+                future: books,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return CircularProgressIndicator();
+                  } else if (snapshot.hasError) {
+                    return Text('Error: ${snapshot.error}');
+                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return Text('No books available for this translation');
+                  } else {
+                    return DropdownButtonHideUnderline(child:
+                    DropdownButton<String>(
+                      menuMaxHeight: 200,
+                      iconSize: 24, // Ensure the arrow size stays appropriate
+                      isExpanded: true, // Make the dropdown expand to prevent overflow
+                      elevation: 8, // Optional: adds shadow for better visibility
+                      icon: Icon(Icons.arrow_drop_down), // Custom dropdown arrow
+                      value: selectedBook,
+                      onChanged: (String? newBook) {
+                        setState(() {
+                          selectedBook = newBook!;
+                          selectedChapter = "1";
+                          selectedVerse = '1';
+                          fetchChapterContent2(selectedTranslation.toString(), selectedBook.toString()); // Fetch content for the selected chapter
+                        });
+                      },
+                      items: snapshot.data!
+                          .map((book) => DropdownMenuItem<String>(
+                        value: book['id'],  // Use the 'id' as the value
+                        child: Text(book['name']!),  // Show 'name' as the label
+                      ))
+                          .toList(),
+                      hint: Text('Select Book'),
+                    ));
+                  }
+                },
+              ),
+            SizedBox(height: 10),
+
+           if(selectedBook!=null)...[
+             // Chapter Dropdown
+             DropdownButtonHideUnderline(child: DropdownButton<String>(
+               value: selectedChapter,
+               menuMaxHeight: 200,
+               iconSize: 24, // Ensure the arrow size stays appropriate
+               isExpanded: true, // Make the dropdown expand to prevent overflow
+               elevation: 8, // Optional: adds shadow for better visibility
+               icon: Icon(Icons.arrow_drop_down), // Custom dropdown arrow
+               items: List.generate(numberOfChapters, (index) {
+                 return DropdownMenuItem<String>(
+                   value: "${index + 1}",
+                   child: Text('Chapter ${index + 1}'),
+                 );
+               }),
+               onChanged: (value) {
+                 setState(() {
+                   selectedChapter = value!;
+                   selectedVerse = '1';
+                   fetchChapterContent2(selectedTranslation.toString(), selectedBook.toString());
+                 });
+               },
+               hint: Text("Select Chapter"),
+             ),),
+             SizedBox(height: 16),
+             // Verse Dropdown
+             DropdownButtonHideUnderline(child: DropdownButton<String>(
+               value: selectedVerse,
+               menuMaxHeight: 200,
+               iconSize: 24, // Ensure the arrow size stays appropriate
+               isExpanded: true, // Make the dropdown expand to prevent overflow
+               elevation: 8, // Optional: adds shadow for better visibility
+               icon: Icon(Icons.arrow_drop_down), // Custom dropdown arrow
+               items: verses.map((verse) {
+                 return DropdownMenuItem<String>(
+                   value: "${verses.indexOf(verse) + 1}",
+                   child: Text(verse),
+                 );
+               }).toList(),
+               onChanged: (value) {
+                 setState(() {
+                   selectedVerse = value!;
+                 });
+                 changeVerse();
+               },
+               hint: Text("Select Verse"),
+             ),),
+             SizedBox(height: 16),
+             // Display Verse Content
+             Text(
+               "Verse Content:",
+               style: TextStyle(fontWeight: FontWeight.bold),
+             ),
+             SizedBox(height: 8),
+             Text(chapterContent),
+             SizedBox(height: 20)
+           ],
+
+
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _formatDuration(int seconds) {
+  final minutes = seconds ~/ 60;
+  final secs = seconds % 60;
+  return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+}
+
+
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+flutter_sound: ^9.28.0
