@@ -1,0 +1,315 @@
+import '../dependencies/app_dependencies.dart';
+import 'package:http/http.dart' as http;
+
+class Recording extends StatefulWidget {
+  const Recording({super.key});
+
+  @override
+  State<Recording> createState() => _RecordingState();
+}
+
+class _RecordingState extends State<Recording> {
+  final ScrollController _scrollController = ScrollController();
+
+  late Future<List<dynamic>> translations;
+  late Future<List<dynamic>> books;
+  String? selectedTranslation;
+  String? selectedBook;
+
+  void scrollToVerse(int verseNumber) {
+    final index = chapterContent.where((item) => item['type'] == 'verse').toList().indexWhere((v) => v['number'] == verseNumber);
+    print(index);
+    if (index != -1) {
+      _scrollController.animateTo(
+        index * 200.0,
+        duration: Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    }
+
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    translations = fetchTranslations();
+  }
+
+  // Fetch available translations from API
+  Future<List<dynamic>> fetchTranslations() async {
+    final url = 'https://bible.helloao.org/api/available_translations.json';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      List<dynamic> availableTranslations = data['translations'];
+      return availableTranslations;
+    } else {
+      throw Exception('Failed to load translations');
+    }
+  }
+
+  // Fetch books for selected translation from API
+  Future<List<dynamic>> fetchBooks(String translation) async {
+    final url = 'https://bible.helloao.org/api/$translation/books.json';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      List<dynamic> availableBooks = List<dynamic>.from(data['books']);
+      return availableBooks;
+    } else {
+      throw Exception('Failed to load books');
+    }
+  }
+
+  // Fetch chapter content from the API
+  Future<List<dynamic>> fetchChapterContent(String translation, String book, int chapter) async {
+    final url = 'https://bible.helloao.org/api/$translation/$book/$chapter.json';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      // Assuming content is available as a 'content' field, adjust if needed
+      return data['content'] ?? 'No content available';
+    } else {
+      throw Exception('Failed to load chapter content');
+    }
+  }
+
+  String selectedChapter = "1";
+  String selectedVerse = "1";
+  List chapterContent = [];
+  int numberOfChapters = 0;
+  int numberOfVerses = 0;
+  List<String> chapters = [];
+  List<String> verses = [];
+  Map<String, dynamic> data = {};
+
+  // Method to fetch chapter content
+  Future<void> fetchChapterContent2(String translation, String book) async {
+    final url =
+        'https://bible.helloao.org/api/$translation/$book/$selectedChapter.json';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      setState(() {
+        data = json.decode(response.body);
+        // Get the number of chapters in the book
+        numberOfChapters = data['book']['numberOfChapters'];
+        // Populate chapters dropdown
+        chapters = List.generate(numberOfChapters, (index) => 'Chapter ${index + 1}');
+        // Set the default number of verses for the first chapter
+        numberOfVerses = data['numberOfVerses'];
+        verses = List.generate(numberOfVerses, (index) => 'Verse ${index + 1}');
+        chapterContent = _getVerseContent(data);
+      });
+    } else {
+      // Handle error
+      setState(() {
+        chapterContent = [];
+      });
+    }
+  }
+
+  changeVerse(){
+    setState(() {
+      chapterContent = _getVerseContent(data);
+    });
+  }
+
+  // Extract content for a particular verse
+  List _getVerseContent(Map data) {
+    var chapter = data['chapter'];
+    return (chapter['content'] as List);
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Scaffold(
+      backgroundColor: AppColors.white,
+      appBar: AppBar(title: Text('Record In Memory'),
+          iconTheme: IconThemeData(
+              color: AppColors.white
+          )),
+      body: SingleChildScrollView(
+        
+        padding: EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(height: 10),
+            // Translation Dropdown
+            FutureBuilder<List<dynamic>>(
+              future: translations,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return CircularProgressIndicator();
+                } else if (snapshot.hasError) {
+                  return Text('Error: ${snapshot.error}');
+                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return Text('No translations available');
+                } else {
+                  return DropdownButtonHideUnderline(child: DropdownButton<String>(
+                    menuMaxHeight: 200,
+                    iconSize: 24, // Ensure the arrow size stays appropriate
+                    isExpanded: true, // Make the dropdown expand to prevent overflow
+                    elevation: 8, // Optional: adds shadow for better visibility
+                    icon: Icon(Icons.arrow_drop_down), // Custom dropdown arrow
+                    value: selectedTranslation,
+                    onChanged: (String? newTranslation) {
+                      setState(() {
+                        selectedTranslation = newTranslation!;
+                        selectedBook = null;
+                        books = fetchBooks(newTranslation);
+                      });
+                    },
+                    items: snapshot.data!.where((data)=> data['id']=='BSB')
+                        .map((translation) => DropdownMenuItem<String>(
+                      value: translation['id'],  // Use the 'id' as the value
+                      child: Text(translation['languageEnglishName']),  // Show 'name' as the label
+                    )).toList(),
+                    hint: Text('Select Translation'),
+                  ));
+                }
+              },
+            ),
+            SizedBox(height: 10),
+
+            // Book Dropdown
+            if (selectedTranslation!=null)
+              FutureBuilder<List<dynamic>>(
+                future: books,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return CircularProgressIndicator();
+                  } else if (snapshot.hasError) {
+                    return Text('Error: ${snapshot.error}');
+                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return Text('No books available for this translation');
+                  } else {
+                    return DropdownButtonHideUnderline(child:
+                    DropdownButton<String>(
+                      menuMaxHeight: 200,
+                      iconSize: 24, // Ensure the arrow size stays appropriate
+                      isExpanded: true, // Make the dropdown expand to prevent overflow
+                      elevation: 8, // Optional: adds shadow for better visibility
+                      icon: Icon(Icons.arrow_drop_down), // Custom dropdown arrow
+                      value: selectedBook,
+                      onChanged: (String? newBook) {
+                        setState(() {
+                          selectedBook = newBook!;
+                          selectedChapter = "1";
+                          selectedVerse = '1';
+                          fetchChapterContent2(selectedTranslation.toString(), selectedBook.toString()); // Fetch content for the selected chapter
+                        });
+                      },
+                      items: snapshot.data!
+                          .map((book) => DropdownMenuItem<String>(
+                        value: book['id'],  // Use the 'id' as the value
+                        child: Text(book['name']),  // Show 'name' as the label
+                      ))
+                          .toList(),
+                      hint: Text('Select Book'),
+                    ));
+                  }
+                },
+              ),
+            SizedBox(height: 10),
+
+            if(selectedBook!=null)...[
+              // Chapter Dropdown
+              DropdownButtonHideUnderline(child: DropdownButton<String>(
+                value: selectedChapter,
+                menuMaxHeight: 200,
+                iconSize: 24, // Ensure the arrow size stays appropriate
+                isExpanded: true, // Make the dropdown expand to prevent overflow
+                elevation: 8, // Optional: adds shadow for better visibility
+                icon: Icon(Icons.arrow_drop_down), // Custom dropdown arrow
+                items: List.generate(numberOfChapters, (index) {
+                  return DropdownMenuItem<String>(
+                    value: "${index + 1}",
+                    child: Text('Chapter ${index + 1}'),
+                  );
+                }),
+                onChanged: (value) {
+                  setState(() {
+                    selectedChapter = value!;
+                    selectedVerse = '1';
+                    fetchChapterContent2(selectedTranslation.toString(), selectedBook.toString());
+                  });
+                },
+                hint: Text("Select Chapter"),
+              ),),
+              SizedBox(height: 16),
+              // Verse Dropdown
+              DropdownButtonHideUnderline(child: DropdownButton<String>(
+                value: selectedVerse,
+                menuMaxHeight: 200,
+                iconSize: 24, // Ensure the arrow size stays appropriate 
+                isExpanded: true, // Make the dropdown expand to prevent overflow
+                elevation: 8, // Optional: adds shadow for better visibility
+                icon: Icon(Icons.arrow_drop_down), // Custom dropdown arrow
+                items: verses.map((verse) {
+                  return DropdownMenuItem<String>(
+                    value: "${verses.indexOf(verse) + 1}",
+                    child: Text(verse),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedVerse = value!;
+                  });
+                  scrollToVerse(int.parse(selectedVerse));
+                  //changeVerse();
+                },
+                hint: Text("Select Verse"),
+              ),),
+              SizedBox(height: 16),
+              // Display Verse Content
+              Text(
+                "Verse Content:",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              ListView.builder(itemBuilder: (context,index){
+                final verses = chapterContent.where((item) => item['type'] == 'verse').toList();
+                final verse = verses[index];
+                final verseNumber = verse['number'];
+                final contentItems = verse['content'];
+                final verseText = getVerseText(contentItems).replaceAll("{lineBreak: true}", "")  // Remove lineBreak
+                    .replaceAll(RegExp(r"\{.*?\}"), "")
+                    .replaceAll("â", "\"")
+                    .replaceAll("â", "\"")
+                    .replaceAll("â", "\"")
+                    .replaceAll("â", "\"");
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Verse $verseNumber:",style: TextStyle(fontWeight: FontWeight.w600)),
+                    Text(verseText)
+                  ],
+                );
+              },
+              controller: _scrollController,
+             // physics: NeverScrollableScrollPhysics(),
+              itemCount: chapterContent.where((item) => item['type'] == 'verse').toList().length,
+              shrinkWrap: true,),
+              SizedBox(height: 20)
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String getVerseText(dynamic contentItems) {
+    return contentItems
+        .where((e) => e is String || (e is Map && e['text'] != null))
+        .map((e) => e is String ? e : e['text'])
+        .join(' ');
+  }
+}
