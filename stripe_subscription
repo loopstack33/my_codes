@@ -1,0 +1,140 @@
+  Future<String?> createCustomer() async{
+    try{
+      final customerResponse = await http.post(
+        Uri.parse('https://api.stripe.com/v1/customers'),
+        headers: {
+          "Authorization": "Bearer ${ApiURls.secretKey}",
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: {
+          "email": 'loopsstack@gmail.com',
+          "name": 'Muhammad Manan'
+        },
+      );
+      final customerId = jsonDecode(customerResponse.body)['id'];
+      log('CUSTOMER ID $customerId');
+
+      return customerId;
+    }
+    catch(e){
+     log(e.toString());
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> createSubscription(String customerId, String priceId) async {
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://api.stripe.com/v1/subscriptions'),
+        headers: {
+          "Authorization": "Bearer ${ApiURls.secretKey}",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: {
+          "customer": customerId,
+          "items[0][price]": priceId,
+          "payment_behavior": "default_incomplete",
+          "expand[]": "latest_invoice.payment_intent",
+        },
+      );
+
+      log("SUBSCRIPTION RESPONSE: ${response.body}");
+      return jsonDecode(response.body);
+    } catch (e, s) {
+      log(s.toString());
+      log(e.toString());
+      return null;
+    }
+  }
+
+  Future<void> subscriptionPayment(String priceId, context) async {
+    BotToast.showLoading();
+    try {
+      final customerId = await createCustomer();
+      final subscription = await createSubscription(customerId.toString(), priceId);
+      //final clientSecret = subscription?["latest_invoice"]["payment_intent"]["client_secret"];
+
+      final latestInvoice = subscription?["latest_invoice"];
+      final paymentIntent = latestInvoice?["payment_intent"];
+
+
+      if (paymentIntent != null && paymentIntent["client_secret"] != null) {
+        final clientSecret = paymentIntent["client_secret"];
+        log('CLIENT SECRET $clientSecret');
+        if (clientSecret == null) throw Exception("Client secret not found");
+
+        await Stripe.instance.initPaymentSheet(
+          paymentSheetParameters: SetupPaymentSheetParameters(
+            allowsDelayedPaymentMethods: true,
+            merchantDisplayName: 'Psalmlog',
+            paymentIntentClientSecret: clientSecret,
+            style: ThemeMode.dark,
+          ),
+        );
+
+        showPaymentSheet(context);
+
+      } else {
+        BotToast.closeAllLoading();
+        // Free subscription or already paid – no payment required
+        log("No payment required for this subscription.");
+      }
+
+    } catch (error, s) {
+      log("Error: $error");
+      log("Stack: $s");
+      BotToast.closeAllLoading();
+    }
+  }
+
+  void showPaymentSheet(context) async{
+    try{
+      await Stripe.instance.presentPaymentSheet().then((val){
+        print("PRESENT SHEET $val");
+        BotToast.closeAllLoading();
+      }).onError((errorMsg, sTrace){
+        if (errorMsg is StripeException) {
+          final String errorMessage = errorMsg.error.localizedMessage ?? 'Payment failed';
+          BotToast.showText(text: errorMessage.toString());
+        } else {
+          BotToast.showText(text: errorMsg.toString());
+        }
+        BotToast.closeAllLoading();
+      });
+    }
+    on StripeException catch(error) {
+      log("STRIPE EXCEPTION ${error.toString()}");
+      BotToast.closeAllLoading();
+    }
+    catch(errorMsg, s){
+      log("CATCH ERROR ${errorMsg.toString()}");
+      log("TRACE ERROR ${s.toString()}");
+      BotToast.closeAllLoading();    }
+  }
+
+  Future<void> cancelStripeSubscription(String subscriptionId) async {
+    const String secretKey = 'sk_test_51Qx7VY...'; // Replace with your Stripe Secret Key
+    final url = Uri.parse('https://api.stripe.com/v1/subscriptions/$subscriptionId');
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $secretKey',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: {
+        'cancel_at_period_end': 'true', // Use 'true' to cancel at period end
+        // Optional cancellation reason:
+        // 'cancellation_details[reason]': 'requested_by_customer',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      print('Subscription cancelled successfully.');
+      print(response.body); // Optional: debug the response
+    } else {
+      print('Failed to cancel subscription: ${response.statusCode}');
+      print(response.body); // Optional: see the error message
+    }
+  }
