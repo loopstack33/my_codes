@@ -1,0 +1,30 @@
+✅ 1. Find Large Files in the Project Folder (Current Files, Not Git History)
+Get-ChildItem -Recurse -File | Sort-Object Length -Descending | Select-Object FullName, @{Name="SizeMB";Expression={"{0:N2}" -f ($_.Length / 1MB)}} -First 20
+
+✅ 2. Add to .gitignore (so they don’t come back)
+Open .gitignore and make sure it includes:
+# Flutter build output
+build/
+.dart_tool/
+android/app/.cxx
+*.apk
+*.dill
+*.bin
+
+✅ 3. Check Size Before/After Cleanup
+Run:
+git count-objects -vH
+
+✅ 4. Use git filter-repo to erase them from history:
+
+⚠️ This is safe if you're the only contributor or all contributors will coordinate. It rewrites the entire Git history.
+
+👉 Install (if not yet):
+pip install git-filter-repo
+
+then run cleanup
+git filter-repo --path build/ --path .dart_tool/ --path '*.apk' --path '*.dill' --path '*.bin' --invert-paths
+
+then force push
+git push --force --all
+git push --force --tags
